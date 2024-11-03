@@ -26,6 +26,11 @@ venv/
 ENV/
 data/
 
+# Exclude specific data subdirectories but keep data folder structure
+!data/
+data/html-files/
+data/output/
+
 # IDE specific files
 .idea/
 .vscode/
