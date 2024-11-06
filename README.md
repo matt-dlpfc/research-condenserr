@@ -21,5 +21,11 @@ Pull requests are welcome. For major changes, please open an issue first to disc
 ## License
 [MIT](https://choosealicense.com/licenses/mit/)
 
+
 ## Changelog
-[See CHANGELOG.md for details](CHANGELOG.md)
+Recent changes:
+* Add possibility to scrape upon request results of clinical trial data posted in clinicaltrials.gov (2024-11-06)
+* uploaded and updated ancilliary files and research_condenser.py: now handles work in task-specific subdirectories (2024-11-03)
+* Update changelog (2024-11-03)
+
+For full changelog, see [CHANGELOG.md](CHANGELOG.md)
