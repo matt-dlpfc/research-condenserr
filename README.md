@@ -131,3 +131,10 @@ Pull requests are welcome. For major changes:
 ## License
 
 [MIT License](https://choosealicense.com/licenses/mit/)
+## Changelog
+Recent changes:
+* Update readme (2024-11-06)
+* Update changelog (2024-11-06)
+* Update changelog with recent changes (2024-11-06)
+
+For full changelog, see [CHANGELOG.md](CHANGELOG.md)
