@@ -5,14 +5,13 @@ import requests
 from pathlib import Path
 import re
 import logging
+from typing import Optional
+
+from specialized_scrapers.clinical_trials import ClinicalTrialScraper
 
 class ResearchCondenser:
     def __init__(self, task_subdir):
-        """Initialize the research condenser with a task-specific subdirectory.
-        
-        Args:
-            task_subdir (str): Name of the task subdirectory (e.g., 'company_A')
-        """
+        """Initialize the research condenser with a task-specific subdirectory."""
         # Base directories are relative to the project root
         base_path = Path(__file__).parent.parent
         self.html_folder = base_path / "data" / "html-files" / task_subdir
@@ -29,47 +28,48 @@ class ResearchCondenser:
         logging.info(f"Initialized ResearchCondenser for task: {task_subdir}")
         logging.info(f"Using html-files directory: {self.html_folder}")
         logging.info(f"Using output directory: {self.output_folder}")
+        
+        # Initialize clinical trial scraper
+        self.clinical_trial_scraper = ClinicalTrialScraper()
 
-    def extract_text_from_html(self, html_content):
+    def extract_text_from_html(self, html_content, source_type=None):
         """Extract meaningful text content from HTML while preserving structure."""
-        soup = BeautifulSoup(html_content, 'html.parser')
+        if source_type == 'clinicaltrials':
+            try:
+                # Try html.parser first
+                soup = BeautifulSoup(html_content, 'html.parser')
+                markdown_tables = self.clinical_trial_scraper.extract_data(str(soup))
+                
+                # If we got very little data, try lxml parser
+                if not markdown_tables:
+                    logging.info("No data from html.parser, trying lxml parser...")
+                    soup = BeautifulSoup(html_content, 'lxml')
+                    markdown_tables = self.clinical_trial_scraper.extract_data(str(soup))
+                
+                return markdown_tables
+                
+            except Exception as e:
+                logging.error(f"Error processing clinical trial data: {str(e)}")
+                return self._standard_text_extraction(html_content)
         
-        # Remove script and style elements
-        for element in soup(['script', 'style']):
-            element.decompose()
-        
-        # Extract text while preserving important structural elements
-        content = []
-        for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'ul', 'ol', 'li', 'div']):
-            if element.name.startswith('h'):
-                # Convert HTML headers to Markdown headers
-                level = int(element.name[1])
-                content.append(f"{'#' * level} {element.get_text().strip()}\n")
-            elif element.name == 'p':
-                content.append(f"{element.get_text().strip()}\n\n")
-            elif element.name in ['ul', 'ol']:
-                for li in element.find_all('li', recursive=False):
-                    content.append(f"- {li.get_text().strip()}\n")
-                content.append("\n")
-            
-        return ''.join(content)
+        return self._standard_text_extraction(html_content)
 
-    def process_url(self, url):
+    def process_url(self, url, source_type=None):
         """Process a single URL and return its text content."""
         try:
             response = requests.get(url)
             response.raise_for_status()
-            return self.extract_text_from_html(response.text)
+            return self.extract_text_from_html(response.text, source_type=source_type)
         except Exception as e:
             logging.error(f"Error processing URL {url}: {str(e)}")
             return None
 
-    def process_html_file(self, html_file_path):
+    def process_html_file(self, html_file_path, source_type=None):
         """Process a single HTML file and return its text content."""
         try:
             with open(html_file_path, 'r', encoding='utf-8') as f:
                 html_content = f.read()
-            return self.extract_text_from_html(html_content)
+            return self.extract_text_from_html(html_content, source_type=source_type)
         except Exception as e:
             logging.error(f"Error processing HTML file {html_file_path}: {str(e)}")
             return None
@@ -118,6 +118,36 @@ class ResearchCondenser:
         except Exception as e:
             logging.error(f"Error appending to inputs file: {e}")
 
+    def _standard_text_extraction(self, html_content):
+        """Extract meaningful text content from HTML while preserving structure."""
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        # Remove script and style elements
+        for script in soup(["script", "style"]):
+            script.decompose()
+        
+        # Extract text while preserving important structural elements
+        content = []
+        for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'ul', 'ol', 'li', 'div']):
+            if element.name.startswith('h'):
+                # Convert HTML headers to Markdown headers
+                level = int(element.name[1])
+                content.append(f"{'#' * level} {element.get_text().strip()}\n")
+            elif element.name == 'p':
+                content.append(f"{element.get_text().strip()}\n\n")
+            elif element.name in ['ul', 'ol']:
+                for li in element.find_all('li', recursive=False):
+                    content.append(f"- {li.get_text().strip()}\n")
+                content.append("\n")
+        
+        # Join all text blocks
+        text = "\n".join(content)
+        
+        # Clean up excessive newlines
+        text = re.sub(r'\n{3,}', '\n\n', text)
+        
+        return text
+
 def main():
     # Get task-specific subdirectory from user
     task_subdir = input("Please enter the task name (e.g., 'company_A'): ").strip()
@@ -135,6 +165,10 @@ def main():
     # Get input type from user
     input_type = input("Would you like to process URLs or HTML files? (url/html): ").lower()
     
+    # Add source type prompt for both URL and HTML processing
+    source_type = input("Is this from clinicaltrials.gov? (yes/no): ").lower().strip()
+    source_type = 'clinicaltrials' if source_type == 'yes' else None
+    
     if input_type == 'url':
         # Process URLs
         print("Enter URLs one per line. When finished, enter a blank line or press Ctrl+D (Unix) / Ctrl+Z (Windows).")
@@ -150,7 +184,7 @@ def main():
                 break
         
         for url in urls:
-            content = condenser.process_url(url)
+            content = condenser.process_url(url, source_type=source_type)
             if content:
                 source_name = re.sub(r'[^\w\-_.]', '_', url.split('/')[-1])
                 md_file = condenser.save_to_markdown(content, source_name)
@@ -166,7 +200,7 @@ def main():
             return
         
         for html_file in html_files:
-            content = condenser.process_html_file(html_file)
+            content = condenser.process_html_file(html_file, source_type=source_type)
             if content:
                 md_file = condenser.save_to_markdown(content, html_file.stem)
                 if md_file:
