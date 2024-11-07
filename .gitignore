@@ -20,6 +20,7 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+logs/
 
 # Virtual Environment
 venv/
@@ -31,11 +32,17 @@ data/
 data/html-files/
 data/output/
 
+# Exclude specific tests
+tests/
+.pytest_cache/
+.coverage
+
 # IDE specific files
 .idea/
 .vscode/
 *.swp
 *.swo
+*.bak
 
 # OS specific files
 .DS_Store

@@ -7,7 +7,8 @@ import re
 import logging
 from typing import Optional
 
-from specialized_scrapers.clinical_trials import ClinicalTrialScraper
+from specialized_scrapers.clinical_trials import ClinicalTrialProcessor
+from specialized_scrapers.task_types import TaskType, DataSource
 
 class ResearchCondenser:
     def __init__(self, task_subdir):
@@ -17,9 +18,18 @@ class ResearchCondenser:
         self.html_folder = base_path / "data" / "html-files" / task_subdir
         self.output_folder = base_path / "data" / "output" / task_subdir
         
-        # Set up logging
-        logging.basicConfig(level=logging.INFO,
-                          format='%(asctime)s - %(levelname)s - %(message)s')
+        # Set up logging to both file and console
+        log_file = base_path / "logs" / f"{task_subdir}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        log_file.parent.mkdir(exist_ok=True)
+        
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format='%(asctime)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler(log_file),
+                logging.StreamHandler()
+            ]
+        )
         
         # Create directories if they don't exist
         self.html_folder.mkdir(parents=True, exist_ok=True)
@@ -30,26 +40,32 @@ class ResearchCondenser:
         logging.info(f"Using output directory: {self.output_folder}")
         
         # Initialize clinical trial scraper
-        self.clinical_trial_scraper = ClinicalTrialScraper()
+        self.clinical_processor = ClinicalTrialProcessor()
 
     def extract_text_from_html(self, html_content, source_type=None):
         """Extract meaningful text content from HTML while preserving structure."""
+        logging.info(f"Starting extract_text_from_html with source_type={source_type}")
+        
         if source_type == 'clinicaltrials':
+            logging.debug("Detected clinical trials source type")
             try:
-                # Try html.parser first
-                soup = BeautifulSoup(html_content, 'html.parser')
-                markdown_tables = self.clinical_trial_scraper.extract_data(str(soup))
+                logging.debug("Attempting to process clinical trial HTML content")
+                if not hasattr(self, 'clinical_processor'):
+                    logging.error("clinical_processor not initialized!")
+                    return self._standard_text_extraction(html_content)
                 
-                # If we got very little data, try lxml parser
-                if not markdown_tables:
-                    logging.info("No data from html.parser, trying lxml parser...")
-                    soup = BeautifulSoup(html_content, 'lxml')
-                    markdown_tables = self.clinical_trial_scraper.extract_data(str(soup))
+                # Try to process with clinical trial processor
+                result = self.clinical_processor.process_data(html_content, 'html')
                 
-                return markdown_tables
+                if result:
+                    logging.info("Successfully processed clinical trial data")
+                    return result
                 
+                logging.warning("Clinical trial processing returned no results, falling back to standard extraction")
+                return self._standard_text_extraction(html_content)
+                    
             except Exception as e:
-                logging.error(f"Error processing clinical trial data: {str(e)}")
+                logging.error(f"Error processing clinical trial data: {str(e)}", exc_info=True)
                 return self._standard_text_extraction(html_content)
         
         return self._standard_text_extraction(html_content)
@@ -66,12 +82,20 @@ class ResearchCondenser:
 
     def process_html_file(self, html_file_path, source_type=None):
         """Process a single HTML file and return its text content."""
+        logging.info(f"Starting process_html_file with source_type={source_type}")
         try:
             with open(html_file_path, 'r', encoding='utf-8') as f:
                 html_content = f.read()
-            return self.extract_text_from_html(html_content, source_type=source_type)
+                logging.debug(f"Successfully read HTML file: {html_file_path}")
+            
+            result = self.extract_text_from_html(html_content, source_type=source_type)
+            if result:
+                logging.info("Successfully extracted text from HTML")
+            else:
+                logging.warning("No text extracted from HTML")
+            return result
         except Exception as e:
-            logging.error(f"Error processing HTML file {html_file_path}: {str(e)}")
+            logging.error(f"Error processing HTML file {html_file_path}: {str(e)}", exc_info=True)
             return None
 
     def save_to_markdown(self, content, source_name):
@@ -120,11 +144,15 @@ class ResearchCondenser:
 
     def _standard_text_extraction(self, html_content):
         """Extract meaningful text content from HTML while preserving structure."""
+        logging.info("Starting standard text extraction")
         soup = BeautifulSoup(html_content, 'html.parser')
         
         # Remove script and style elements
         for script in soup(["script", "style"]):
             script.decompose()
+        
+        # Log the structure being processed
+        logging.debug(f"Processing HTML with {len(soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'ul', 'ol', 'li', 'div']))} elements")
         
         # Extract text while preserving important structural elements
         content = []
@@ -148,28 +176,38 @@ class ResearchCondenser:
         
         return text
 
-def main():
-    # Get task-specific subdirectory from user
-    task_subdir = input("Please enter the task name (e.g., 'company_A'): ").strip()
+def process_clinical_data(condenser: ResearchCondenser, source_type: DataSource):
+    if source_type == DataSource.API:
+        # Handle API input
+        print("Enter NCT IDs one per line. When finished, enter a blank line.")
+        nct_ids = []
+        while True:
+            try:
+                nct_id = input().strip()
+                if not nct_id:
+                    break
+                if re.match(r'NCT\d{8}', nct_id):
+                    nct_ids.append(nct_id)
+                else:
+                    print(f"Invalid NCT ID format: {nct_id}")
+            except EOFError:
+                break
+
+        for nct_id in nct_ids:
+            # Convert the NCT ID to string before processing
+            content = condenser.clinical_processor.process_data(str(nct_id), 'api')
+            if content:
+                md_file = condenser.save_to_markdown(content, nct_id)
+                if md_file:
+                    condenser.append_to_inputs_file(content, "clinical_trial_api")
+    else:
+        # Handle URL or HTML processing
+        process_general_data(condenser, source_type, source_type_override='clinicaltrials')
+
+def process_general_data(condenser: ResearchCondenser, source_type: DataSource, source_type_override=None):
+    logging.info(f"Starting process_general_data with source_type={source_type}, override={source_type_override}")
     
-    try:
-        # Initialize the condenser with task subdirectory
-        condenser = ResearchCondenser(task_subdir)
-    except FileNotFoundError as e:
-        print(f"Error: {e}")
-        print("\nBefore proceeding, please ensure you have created:")
-        print(f"1. data/html-files/{task_subdir}/")
-        print(f"2. data/output/{task_subdir}/")
-        return
-    
-    # Get input type from user
-    input_type = input("Would you like to process URLs or HTML files? (url/html): ").lower()
-    
-    # Add source type prompt for both URL and HTML processing
-    source_type = input("Is this from clinicaltrials.gov? (yes/no): ").lower().strip()
-    source_type = 'clinicaltrials' if source_type == 'yes' else None
-    
-    if input_type == 'url':
+    if source_type == DataSource.URL:
         # Process URLs
         print("Enter URLs one per line. When finished, enter a blank line or press Ctrl+D (Unix) / Ctrl+Z (Windows).")
         print("You can also paste multiple URLs at once, with each URL on a new line.")
@@ -190,21 +228,68 @@ def main():
                 md_file = condenser.save_to_markdown(content, source_name)
                 if md_file:
                     condenser.append_to_inputs_file(content, "url_research")
-    
-    elif input_type == 'html':
+
+    elif source_type == DataSource.HTML:
         # Process HTML files from task-specific html-files subdirectory
         html_files = list(condenser.html_folder.glob('*.html'))
         
         if not html_files:
-            print(f"No HTML files found in {condenser.html_folder}!")
+            logging.warning(f"No HTML files found in {condenser.html_folder}!")
             return
         
+        logging.info(f"Found {len(html_files)} HTML files to process")
+        
         for html_file in html_files:
-            content = condenser.process_html_file(html_file, source_type=source_type)
+            logging.info(f"Processing HTML file: {html_file}")
+            content = condenser.process_html_file(html_file, source_type=source_type_override)
             if content:
+                logging.info(f"Successfully extracted content from {html_file}")
                 md_file = condenser.save_to_markdown(content, html_file.stem)
                 if md_file:
                     condenser.append_to_inputs_file(content, "html_research")
+            else:
+                logging.error(f"Failed to extract content from {html_file}")
+
+def main():
+    # Get and validate task subdirectory
+    task_subdir = input("Please enter the task name (e.g., 'company_A'): ").strip()
+    
+    try:
+        condenser = ResearchCondenser(task_subdir)
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
+        print("\nBefore proceeding, please ensure you have created:")
+        print(f"1. data/html-files/{task_subdir}/")
+        print(f"2. data/output/{task_subdir}/")
+        return
+
+    # Get task type
+    while True:
+        try:
+            task_type_str = input("Enter task type (clinical/general): ").lower()
+            task_type = TaskType.from_string(task_type_str)
+            break
+        except ValueError as e:
+            print(e)
+
+    # Get data source based on task type
+    available_sources = DataSource.get_sources_for_task(task_type)
+    while True:
+        source_options = "/".join([s.value for s in available_sources])
+        source_type_str = input(f"Select data source ({source_options}): ").lower()
+        try:
+            source_type = DataSource(source_type_str)
+            if source_type not in available_sources:
+                raise ValueError
+            break
+        except ValueError:
+            print(f"Invalid source type. Please choose from: {source_options}")
+
+    # Process based on task type and source
+    if task_type == TaskType.CLINICAL:
+        process_clinical_data(condenser, source_type)
+    else:
+        process_general_data(condenser, source_type)
 
 if __name__ == "__main__":
     main()

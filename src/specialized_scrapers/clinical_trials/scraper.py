@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass
 from typing import List, Dict, Optional
 from collections import defaultdict
-from specialized_scrapers.clinical_trial_tables_to_markdown import process_clinical_trial_data
+from specialized_scrapers.clinical_trials.formatter import process_clinical_trial_data
 
 @dataclass
 class SectionIdentifiers:
