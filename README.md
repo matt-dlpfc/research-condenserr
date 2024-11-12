@@ -1,141 +1,129 @@
-# Research Condenser Documentation
+# Research Condenser
 
-## Overview
-Research Condenserr is a Python tool designed to extract and format research data from various sources, with specialized support for clinical trials data. It processes HTML content (either from files or URLs) and converts it into well-formatted markdown documents, ready to be integrated in other workflows.
+The Research Condenser is a Python application designed to extract, process, and save **qualitative and ad-hoc** research that you, fellow analyst, carried out to answer some questions. In other words, this is meant to act as a helpful research condenser. This README provides an overview of the functionality, usage, and methods available in the codebase.
 
-## Core Components
+## Sort of vision
+My vision for this mini-project is to create a modular framework that can act on 1) simple, general research tasks such as individual competitor analysis, sense-making; 2) specialized data collection and synthesis tasks/use cases (e.g. clinical trial data).
 
-### 1. Research Condenser Class
-Location: `src/research_condenser.py`
+Right now, the "synthesis" capability is not part of this mini-project, but a minimum version will be implemented soon. In the future, I want keep adding #2 (ability to handle specialized use cases) based on how useful they are to me. I am pondering whether to add an extremely simplistic roadmap in this file.
 
-The main class that handles:
-- HTML content processing
-- File management
-- Text extraction
-- Markdown conversion
+## Important disclaimers
+1) This mini-project is **NOT** intended to be used for quantitative data or to populate relational databases, or similar. You'll be disappointed if you try to do so. Or, I'll be very surprised to hear otherwise (I hope for the latter!).
+2) By "research" I do not mean scientific or academic research; rather, I refer to stuff like market research, individual competitor analysis, market trend analysis, sense-making of an event or specific topic, getting some insights about a specific clinical trial, and so on.
 
-Key methods:
-- `extract_text_from_html()`: Converts HTML to structured text
-- `process_url()`: Handles URL-based content
-- `process_html_file()`: Processes local HTML files
-- `save_to_markdown()`: Saves extracted content as markdown
-- `append_to_inputs_file()`: Adds content to a master input file
-
-### 2. Clinical Trial Processing
-Location: `src/specialized_scrapers/clinical_trials.py`
-
-Specialized scraper for clinical trials data that:
-- Extracts structured data from clinical trial pages
-- Processes complex table structures
-- Converts trial data to markdown format
-
-### 3. Clinical Trial Table Formatting
-Location: `src/specialized_scrapers/clinical_trial_tables_to_markdown.py`
-
-Handles the conversion of clinical trial tables, specifically "Outcome results" and "Adverse effects", to markdown format with:
-- Table structure preservation
-- Footnote handling
-- Section organization
-- Data cleaning
-
-## Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/matt-dlpfc/research-condenserr.git
-```
-
-2. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
+## Table of (remaining) contents
+- [Usage](#usage)
+- [Execution Logic](#execution-logic)
+- [Methods](#methods)
+- [Directory structure](#directory-structure)
+- [Logging](#logging)
+- [Installation](#installation)
+- [License](#license)
+- [Contributing](#contributing)
 ## Usage
+To run the application, execute the following command in your terminal:
 
-### Basic Usage
-
-1. Create required directories:
 ```
-data/
-├── html-files/
-│   └── [task_name]/
-└── output/
-    └── [task_name]/
-```
-
-2. Run the script:
-```bash
 python src/research_condenser.py
 ```
 
-### Input Options
+You will be prompted to enter a task name and select a task type (clinical/general) and data source (HTML, URL, API).
 
-1. **URL Processing**
-   - Choose 'url' when prompted
-   - Enter URLs one per line
-   - End input with blank line or Ctrl+D/Ctrl+Z
+## Execution Logic
 
-2. **HTML File Processing**
-   - Place HTML files in `data/html-files/[task_name]/`
-   - Choose 'html' when prompted
-   - Script processes all HTML files in directory
+1. **Initialization**: The application initializes a `ResearchCondenser` instance with a task-specific subdirectory for storing HTML files and output data.
 
-### Source Type Options
+2. **Task Type Selection**: Users can choose between clinical and general tasks, which determine the processing logic.
 
-- Clinical Trials Data
-  - Answer 'yes' when prompted about clinicaltrials.gov
-  - Uses specialized scraper for clinical trial data
-  - Preserves table structures and metadata
+3. **Data Source Selection**: Depending on the task type, users can select from available data sources:
+   - HTML: Process HTML files from a specified directory.
+   - URL: Extract data from provided URLs.
+   - API: Fetch clinical trial data using NCT IDs.
 
-- General HTML Content
-  - Answer 'no' for standard HTML processing
-  - Uses general-purpose text extraction
+4. **Data Processing**: The application processes the selected data source, extracts relevant information, and saves it in markdown format.
 
-## Output
+5. **Logging**: Throughout the execution, the application logs important events and errors for debugging and tracking purposes.
 
-The script generates:
-1. Individual markdown files for each processed source
-2. Appends content to a master "MY INPUTS" file
-3. Organized by task in the output directory
+## Methods
+
+### ResearchCondenser
+
+- `__init__(self, task_subdir)`: Initializes the ResearchCondenser with a specified task subdirectory for storing HTML files and output data.
+
+- `extract_text_from_html(self, html_content, source_type=None)`: Extracts meaningful text content from HTML while preserving structure. It uses specialized processors for clinical trial data if the source type is specified.
+
+- `process_url(self, url, source_type=None)`: Processes a single URL and returns its text content.
+
+- `process_html_file(self, html_file_path, source_type=None)`: Processes a single HTML file and returns its text content.
+
+- `save_to_markdown(self, content, source_name)`: Saves extracted content to a markdown file with a specified naming convention.
+
+- `append_to_inputs_file(self, content, research_type)`: Appends content to an existing "MY INPUTS" file in the task output directory.
+
+- `_standard_text_extraction(self, html_content)`: Performs standard text extraction from HTML content.
+
+### ClinicalTrialProcessor
+
+- `process_data(self, content: str, source_type: str)`: Processes clinical trial data from various sources (API, JSON, HTML) and returns formatted markdown.
+
+### ClinicalTrialScraper
+
+- `extract_data(self, html_content: str) -> str`: Extracts and formats clinical trial data into markdown tables from the provided HTML content.
+
+### DataSource Enum
+
+- `get_sources_for_task(cls, task_type: TaskType)`: Returns a list of available data sources based on the selected task type.
 
 ## Directory Structure
 
 ```
 research-condenserr/
-├── src/
-│   ├── research_condenser.py
-│   └── specialized_scrapers/
-│       ├── clinical_trials.py
-│       └── clinical_trial_tables_to_markdown.py
+│
 ├── data/
 │   ├── html-files/
+│   │   └── <task_subdir>/          # Directory for HTML files specific to tasks
 │   └── output/
-├── requirements.txt
-└── README.md
+│       └── <task_subdir>/          # Directory for output files specific to tasks
+│
+├── logs/                            # Directory for log files
+│   └── <task_subdir>_<timestamp>.log
+│
+├── src/
+│   ├── research_condenser.py        # Main script for the Research Condenser
+│   └── specialized_scrapers/
+│       ├── clinical_trials/
+│       │        ├── __init__.py          # Package initialization
+│       │         ├── api.py               # API handling for clinical trials
+│       │         ├── formatter.py          # Formatting functions for clinical trial data
+│       │         ├── processor.py          # Processing logic for clinical trial data
+│       │         └── scraper.py            # Scraping logic for clinical trial data
+│       └── task_types.py             # Task type and data source enumerations
+│
+└── requirements.txt                  # List of dependencies for the project
 ```
+## Logging
 
-## Error Handling
+The application uses Python's built-in logging module to log events and errors. Logs are saved to a file in the `logs` directory and are also printed to the console. The log file is named based on the task subdirectory and the current timestamp.
 
-The script includes comprehensive error handling:
-- Logs errors to console
-- Continues processing remaining files if one fails
-- Creates detailed error messages for debugging
 
-## Contributing
+## Installation
 
-Pull requests are welcome. For major changes:
-1. Open an issue first
-2. Discuss proposed changes
-3. Submit pull request
+1. Clone the repository:
+   ```bash
+   git clone <repository-url>
+   cd <repository-directory>
+   ```
+
+2. Install the required packages:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
 
 ## License
 
-[MIT License](https://choosealicense.com/licenses/mit/)
+This project is licensed under the [MIT License](https://choosealicense.com/licenses/mit/). See the LICENSE file for more details.
 
-## Changelog
-Recent changes:
-* Add task types to enhance modularity. Allow clinicaltrials.gov API call to get desired clinical trial data. Improve logging for debugging purposes. Improve processing and formatting of data tables. (2024-11-07)
-* Update changelog with recent changes (2024-11-06)
-* Update readme (2024-11-06)
+## Contributing
 
-For full changelog, see [CHANGELOG.md](CHANGELOG.md)
+Contributions are not expected, but if you do want to contribute, who am I to prevent you from doing that? Please submit a pull request or open an issue for any enhancements or bug fixes.
